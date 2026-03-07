@@ -1,0 +1,32 @@
+{
+  "default_size": {
+    "type": "int",
+    "default": 3,
+    "description": "默认像素大小(2-5)，留空则随机"
+  },
+  "default_palette": {
+    "type": "string",
+    "default": "",
+    "description": "默认调色板名称，留空则随机"
+  },
+  "default_fx": {
+    "type": "string",
+    "default": "",
+    "description": "默认FX效果，留空则不加特效。多个用逗号分隔"
+  },
+  "max_image_size": {
+    "type": "int",
+    "default": 2048,
+    "description": "允许处理的最大图片边长(像素)"
+  },
+  "gif_frames": {
+    "type": "int",
+    "default": 8,
+    "description": "动画GIF帧数"
+  },
+  "gif_duration": {
+    "type": "int",
+    "default": 100,
+    "description": "GIF每帧持续时间(ms)"
+  }
+}
