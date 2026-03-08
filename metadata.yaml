@@ -1,7 +1,7 @@
 name: astrbot_plugin_pixel_converter
 display_name: Pixel Converter
 desc: 将图片转换为像素风格，支持18种调色板、5种FX特效，输出PNG/GIF
-version: v0.1.3
+version: v0.1.4
 author: MonkeyRay
 repo: https://github.com/MR_MonkeyRay/astrbot_plugin_pixel_converter
 support_platforms:

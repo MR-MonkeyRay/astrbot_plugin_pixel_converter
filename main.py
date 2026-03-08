@@ -24,7 +24,7 @@ from .core.sources import (
 from .core.renderer import process_image, cleanup_file
 
 
-@register("astrbot_plugin_pixel_converter", "monkeyray", "将图片转换为像素风格", "0.1.3")
+@register("astrbot_plugin_pixel_converter", "monkeyray", "将图片转换为像素风格", "0.1.4")
 class PixelConverterPlugin(Star):
     """AstrBot plugin for converting images to pixel art style."""
 
