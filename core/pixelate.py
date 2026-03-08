@@ -82,6 +82,23 @@ def map_array_to_palette_rgb(
     return result
 
 
+def _build_palette_image(palette: np.ndarray) -> Image.Image:
+    """Construct a Pillow P-mode reference image for quantize.
+
+    Unused palette entries are filled with the last palette color
+    to prevent Pillow from mapping pixels to spurious black (0,0,0).
+    """
+    palette_image = Image.new("P", (1, 1))
+    flat = palette.flatten().tolist()
+    # Fill remaining entries with the last color to avoid introducing
+    # spurious black when the palette has fewer than 256 colors
+    last_color = flat[-3:]  # Last RGB triplet
+    while len(flat) < 768:
+        flat.extend(last_color)
+    palette_image.putpalette(flat)
+    return palette_image
+
+
 def apply_floyd_steinberg_dither(
     rgb_array: np.ndarray,
     palette: np.ndarray,
@@ -89,14 +106,16 @@ def apply_floyd_steinberg_dither(
     alpha_mask: np.ndarray | None = None,
 ) -> np.ndarray:
     """
-    Floyd-Steinberg dithering on the pixel grid.
+    Floyd-Steinberg dithering using Pillow's built-in C implementation.
 
-    Process pixels left-to-right, top-to-bottom.
-    Error diffusion weights:
-        right = 7/16
-        bottom-left = 3/16
-        bottom = 5/16
-        bottom-right = 1/16
+    Delegates to Pillow's quantize() with FLOYDSTEINBERG dither mode,
+    which runs the same algorithm (left-to-right, top-to-bottom error
+    diffusion with 7/16, 3/16, 5/16, 1/16 weights) in native C code.
+
+    For images with transparent regions (alpha_mask), transparent pixels
+    are pre-filled with their nearest palette color before quantization.
+    This minimizes error diffusion leakage from transparent areas into
+    adjacent opaque pixels.
 
     Args:
         rgb_array: Shape (H, W, 3), dtype uint8
@@ -108,56 +127,31 @@ def apply_floyd_steinberg_dither(
     Returns:
         Quantized array with only palette colors, dtype uint8
     """
-    # Work with float32 (sufficient precision, better memory bandwidth)
-    work = rgb_array.astype(np.float32)
-    height, width = work.shape[:2]
-    result = np.zeros_like(work)
+    palette_img = _build_palette_image(palette)
 
-    palette_float = palette.astype(np.float32)
-    palette_int = palette.astype(np.int32)
+    work = rgb_array.copy()
 
-    for y in range(height):
-        for x in range(width):
-            # Skip transparent pixels
-            if alpha_mask is not None and not alpha_mask[y, x]:
-                result[y, x] = work[y, x]
-                continue
+    # Pre-fill transparent pixels with nearest palette color to minimize
+    # error diffusion leakage into adjacent opaque regions
+    if alpha_mask is not None and not alpha_mask.all():
+        transparent_pixels = work[~alpha_mask]
+        if len(transparent_pixels) > 0:
+            work[~alpha_mask] = map_array_to_palette_rgb(transparent_pixels, palette)
 
-            old_pixel = work[y, x].copy()
+    rgb_image = Image.fromarray(work, mode="RGB")
 
-            # Find nearest palette color
-            diff = palette_int - old_pixel.astype(np.int32)
-            distances = np.sum(diff**2, axis=1)
-            nearest_idx = np.argmin(distances)
-            new_pixel = palette_float[nearest_idx]
+    quantized = rgb_image.quantize(
+        palette=palette_img,
+        dither=Image.Dither.FLOYDSTEINBERG,
+    )
 
-            result[y, x] = new_pixel
+    result = np.array(quantized.convert("RGB"), dtype=np.uint8)
 
-            # Calculate quantization error
-            error = old_pixel - new_pixel
+    # Restore original RGB for transparent pixels
+    if alpha_mask is not None:
+        result[~alpha_mask] = rgb_array[~alpha_mask]
 
-            # Diffuse error to neighbors (only to opaque pixels)
-            # Right: 7/16
-            if x + 1 < width:
-                if alpha_mask is None or alpha_mask[y, x + 1]:
-                    work[y, x + 1] += error * (7 / 16)
-
-            # Bottom row neighbors
-            if y + 1 < height:
-                # Bottom-left: 3/16
-                if x - 1 >= 0:
-                    if alpha_mask is None or alpha_mask[y + 1, x - 1]:
-                        work[y + 1, x - 1] += error * (3 / 16)
-                # Bottom: 5/16
-                if alpha_mask is None or alpha_mask[y + 1, x]:
-                    work[y + 1, x] += error * (5 / 16)
-                # Bottom-right: 1/16
-                if x + 1 < width:
-                    if alpha_mask is None or alpha_mask[y + 1, x + 1]:
-                        work[y + 1, x + 1] += error * (1 / 16)
-
-    # Clip and convert back to uint8
-    return np.clip(result, 0, 255).astype(np.uint8)
+    return result
 
 
 def map_to_palette(

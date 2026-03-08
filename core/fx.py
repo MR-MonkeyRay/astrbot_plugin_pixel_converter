@@ -205,7 +205,6 @@ def apply_dither_frames(
     # Defensive: ensure pixel_size is at least 1
     pixel_size = max(pixel_size, 1)
 
-    result_frames = []
     frame_count = max(frames, 2)
 
     # Move get_palette outside loop (was called every frame)
@@ -226,30 +225,40 @@ def apply_dither_frames(
     base_arr = np.array(work_image)
     is_rgba = work_image.mode == "RGBA"
 
+    # --- 两阶段策略：先按唯一 offset 计算，再按帧序列复用 ---
+
+    # 阶段 1：计算每帧的 noise_offset，找出唯一值
+    offsets = []
     for i in range(frame_count):
         phase = i / frame_count
         noise_offset = int(noise_strength * np.sin(phase * 2 * np.pi))
+        offsets.append(noise_offset)
 
-        # Apply perturbation based on base_arr
+    unique_offsets = set(offsets)
+
+    # 阶段 2：每个唯一 offset 只计算一次 dither
+    offset_to_frame: dict[int, Image.Image] = {}
+    for offset in unique_offsets:
         if is_rgba:
             rgb = base_arr[:, :, :3].astype(np.int16)
             alpha = base_arr[:, :, 3:]
-            rgb = np.clip(rgb + noise_offset, 0, 255).astype(np.uint8)
+            rgb = np.clip(rgb + offset, 0, 255).astype(np.uint8)
             perturbed_arr = np.concatenate([rgb, alpha], axis=2)
             perturbed = Image.fromarray(perturbed_arr, mode="RGBA")
         else:
             arr = base_arr.astype(np.int16)
-            arr = np.clip(arr + noise_offset, 0, 255).astype(np.uint8)
+            arr = np.clip(arr + offset, 0, 255).astype(np.uint8)
             perturbed = Image.fromarray(arr, mode=work_image.mode)
 
-        # Use pre-fetched palette
         frame = map_to_palette(perturbed, palette, dither=True)
 
-        # If downscaled, upscale back to original size
         if pixel_size > 1:
             frame = frame.resize(original_size, Image.Resampling.NEAREST)
 
-        result_frames.append(frame)
+        offset_to_frame[offset] = frame
+
+    # 阶段 3：按原始帧顺序组装（复用已计算的帧）
+    result_frames = [offset_to_frame[o].copy() for o in offsets]
 
     return result_frames
 

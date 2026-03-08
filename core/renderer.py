@@ -16,6 +16,20 @@ from .fx import apply_fx
 from .gif import save_gif
 
 
+# --- 并发控制 ---
+_render_semaphore: asyncio.Semaphore | None = None
+_render_semaphore_size: int = 0
+
+
+def _get_render_semaphore(max_concurrent: int) -> asyncio.Semaphore:
+    """获取渲染信号量，按配置的并发数延迟初始化。"""
+    global _render_semaphore, _render_semaphore_size
+    if _render_semaphore is None or _render_semaphore_size != max_concurrent:
+        _render_semaphore = asyncio.Semaphore(max_concurrent)
+        _render_semaphore_size = max_concurrent
+    return _render_semaphore
+
+
 async def download_image(url: str) -> Image.Image | None:
     """
     Download image from URL.
@@ -124,15 +138,17 @@ async def process_image(
         image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
         logger.info(f"Resized image from {width}x{height} to {new_width}x{new_height}")
 
-    # Render in thread pool
-    result = await asyncio.to_thread(
-        render_sync,
-        image,
-        options.size,
-        options.palette,
-        options.fx_list,
-        config,
-    )
+    # Render in thread pool with concurrency control
+    sem = _get_render_semaphore(config.max_concurrent_renders)
+    async with sem:
+        result = await asyncio.to_thread(
+            render_sync,
+            image,
+            options.size,
+            options.palette,
+            options.fx_list,
+            config,
+        )
 
     return result
 

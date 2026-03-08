@@ -22,6 +22,7 @@ class RenderConfig:
     gif_frames: int
     gif_duration: int
     temp_dir: str
+    max_concurrent_renders: int = 8
 
 
 @dataclass

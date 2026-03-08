@@ -24,7 +24,7 @@ from .core.sources import (
 from .core.renderer import process_image, cleanup_file
 
 
-@register("astrbot_plugin_pixel_converter", "monkeyray", "将图片转换为像素风格", "0.1.1")
+@register("astrbot_plugin_pixel_converter", "monkeyray", "将图片转换为像素风格", "0.1.2")
 class PixelConverterPlugin(Star):
     """AstrBot plugin for converting images to pixel art style."""
 
@@ -37,6 +37,7 @@ class PixelConverterPlugin(Star):
         self.max_image_size: int = 2048
         self.gif_frames: int = 8
         self.gif_duration: int = 100
+        self.max_concurrent_renders: int = 8
         # Temporary directory for output files
         self._temp_dir: str = ""
 
@@ -49,6 +50,7 @@ class PixelConverterPlugin(Star):
         self.max_image_size = config.get("max_image_size", 2048)
         self.gif_frames = config.get("gif_frames", 8)
         self.gif_duration = config.get("gif_duration", 100)
+        self.max_concurrent_renders = config.get("max_concurrent_renders", 8)
         # Create temp directory
         self._temp_dir = tempfile.mkdtemp(prefix="pixel_converter_")
         logger.info(f"Pixel Converter plugin initialized. Temp dir: {self._temp_dir}")
@@ -70,6 +72,7 @@ class PixelConverterPlugin(Star):
             gif_frames=self.gif_frames,
             gif_duration=self.gif_duration,
             temp_dir=self._temp_dir,
+            max_concurrent_renders=self.max_concurrent_renders,
         )
 
     def _extract_at_qq_list(self, event: AstrMessageEvent) -> list[str]:

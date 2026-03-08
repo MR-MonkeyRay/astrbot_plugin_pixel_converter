@@ -28,5 +28,10 @@
     "type": "int",
     "default": 100,
     "description": "GIF每帧持续时间(ms)"
+  },
+  "max_concurrent_renders": {
+    "type": "int",
+    "default": 8,
+    "description": "最大并发渲染任务数"
   }
 }
