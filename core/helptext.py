@@ -20,7 +20,7 @@ def build_help_text() -> str:
 
     # Basic usage
     lines.append("🎮 像素画插件使用帮助")
-    lines.append("")
+    lines.append("—— —— —— —— —— —— —— —— ——")
     lines.append("📝 基本用法")
     lines.append("  命令格式: 像素画 [SIZE] [PALETTE] [FX,FX,...] [@user]")
     lines.append("  别名: pixel, px")
@@ -29,12 +29,12 @@ def build_help_text() -> str:
     lines.append("  - PALETTE: 调色板名称")
     lines.append("  - FX: 特效名称，多个可用逗号或空格分隔")
     lines.append("  - @user: 使用该用户的头像")
-    lines.append("")
+    lines.append("—— —— —— —— —— —— —— —— ——")
     lines.append("📌 示例")
-    lines.append("  像素画 3 gameboy")
-    lines.append("  像素画 4 pico8 glitch @某人")
-    lines.append("  像素画 2 nes dither")
-    lines.append("")
+    lines.append("  - /像素画 3 gameboy")
+    lines.append("  - /像素画 4 pico8 glitch @某人")
+    lines.append("  - /像素画 2 nes dither")
+    lines.append("—— —— —— —— —— —— —— —— ——")
 
     # Palette list (dynamic count)
     palette_count = len(PALETTES)
@@ -54,7 +54,7 @@ def build_help_text() -> str:
             lines.append(f"  {name} ({alias_str})")
         else:
             lines.append(f"  {name}")
-    lines.append("")
+    lines.append("—— —— —— —— —— —— —— —— ——")
 
     # FX effects list (dynamic count and content)
     fx_count = len(STATIC_FX) + len(ANIMATED_FX)

@@ -5,7 +5,7 @@ AstrBot 插件 - 将图片转换为像素风格
 ## 功能特性
 
 - 18 种像素调色板（Game Boy、NES、PICO-8 等）
-- 5 种视觉特效（故障风、CRT、抖动、动画）
+- 5 种视觉特效（CRT、故障风、抖动、轮转、残影）
 - 支持消息图片、@用户头像、自己头像
 - 可配置默认参数
 
@@ -23,7 +23,7 @@ git clone https://github.com/MR-MonkeyRay/astrbot_plugin_pixel_converter.git
 
 **格式**：`像素画 [SIZE] [调色板] [FX,FX,...] [@用户]`
 
-所有参数可选，顺序无关。SIZE 和调色板不填则使用配置默认值或随机；FX 不填则使用配置默认值（可开启随机）。
+所有参数可选，顺序无关。SIZE 和调色板不填则使用配置默认值或随机；FX 不填则使用配置默认值或随机。
 
 **FX 写法**：逗号分隔 `glitch,crt` 或空格分开 `glitch crt` 均可
 
@@ -69,19 +69,19 @@ git clone https://github.com/MR-MonkeyRay/astrbot_plugin_pixel_converter.git
 - `cycle` - 调色板轮转动画
 - `ghost` - 残影动画
 
-多个特效用逗号分隔，如 `crt`。多个动画 FX 同时指定时，仅第一个生效。
+多个特效用逗号分隔。cycle 与其他动画 FX 互斥；dither 与 glitch 可叠加；ghost 仅在无其他动画 FX 时生效；crt 可与任意 FX 叠加。
 
 ## 配置项
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| default_size | int | 3 | 默认像素大小(2-5)，留空随机 |
+| default_size | int | 0 | 像素大小(2-5)，填0随机 |
 | default_palette | string | "" | 默认调色板，留空随机 |
-| default_fx | string | "" | 默认FX，留空则不加特效，多个用逗号分隔 |
-| random_fx | bool | false | 未指定FX时是否随机选择FX组合 |
+| default_fx | string | "" | 默认FX，留空随机，填"none"禁用随机，多个用逗号分隔 |
 | max_image_size | int | 2048 | 最大图片边长(px) |
-| gif_frames | int | 8 | 动画GIF帧数 |
+| gif_frames | int | 8 | GIF帧数 |
 | gif_duration | int | 100 | GIF每帧时长(ms) |
+| max_concurrent_renders | int | 8 | 最大并发渲染数 |
 
 ## 示例
 
