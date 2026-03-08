@@ -24,7 +24,7 @@ from .core.sources import (
 from .core.renderer import process_image, cleanup_file
 
 
-@register("astrbot_plugin_pixel_converter", "monkeyray", "将图片转换为像素风格", "0.1.2")
+@register("astrbot_plugin_pixel_converter", "monkeyray", "将图片转换为像素风格", "0.1.3")
 class PixelConverterPlugin(Star):
     """AstrBot plugin for converting images to pixel art style."""
 
@@ -34,6 +34,7 @@ class PixelConverterPlugin(Star):
         self.default_size: int = 3
         self.default_palette: str = ""
         self.default_fx: str = ""
+        self.random_fx: bool = False
         self.max_image_size: int = 2048
         self.gif_frames: int = 8
         self.gif_duration: int = 100
@@ -47,6 +48,7 @@ class PixelConverterPlugin(Star):
         self.default_size = config.get("default_size", 3)
         self.default_palette = config.get("default_palette", "")
         self.default_fx = config.get("default_fx", "")
+        self.random_fx = config.get("random_fx", False)
         self.max_image_size = config.get("max_image_size", 2048)
         self.gif_frames = config.get("gif_frames", 8)
         self.gif_duration = config.get("gif_duration", 100)
@@ -97,6 +99,7 @@ class PixelConverterPlugin(Star):
                 default_size=self.default_size,
                 default_palette=self.default_palette,
                 default_fx=self.default_fx,
+                random_fx=self.random_fx,
             )
 
             # Check for help request

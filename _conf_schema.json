@@ -14,6 +14,11 @@
     "default": "",
     "description": "默认FX效果，留空则不加特效。多个用逗号分隔"
   },
+  "random_fx": {
+    "type": "bool",
+    "default": false,
+    "description": "未指定FX时是否随机选择FX组合，关闭则不加特效"
+  },
   "max_image_size": {
     "type": "int",
     "default": 2048,

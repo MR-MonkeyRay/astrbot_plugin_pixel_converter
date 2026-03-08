@@ -23,7 +23,7 @@ git clone https://github.com/MR-MonkeyRay/astrbot_plugin_pixel_converter.git
 
 **格式**：`像素画 [SIZE] [调色板] [FX,FX,...] [@用户]`
 
-所有参数可选，顺序无关。SIZE 和调色板不填则使用配置默认值或随机；FX 不填则不加特效。
+所有参数可选，顺序无关。SIZE 和调色板不填则使用配置默认值或随机；FX 不填则使用配置默认值（可开启随机）。
 
 **FX 写法**：逗号分隔 `glitch,crt` 或空格分开 `glitch crt` 均可
 
@@ -78,6 +78,7 @@ git clone https://github.com/MR-MonkeyRay/astrbot_plugin_pixel_converter.git
 | default_size | int | 3 | 默认像素大小(2-5)，留空随机 |
 | default_palette | string | "" | 默认调色板，留空随机 |
 | default_fx | string | "" | 默认FX，留空则不加特效，多个用逗号分隔 |
+| random_fx | bool | false | 未指定FX时是否随机选择FX组合 |
 | max_image_size | int | 2048 | 最大图片边长(px) |
 | gif_frames | int | 8 | 动画GIF帧数 |
 | gif_duration | int | 100 | GIF每帧时长(ms) |

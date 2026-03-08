@@ -17,6 +17,7 @@ def parse_options(
     default_size: int,
     default_palette: str,
     default_fx: str,
+    random_fx: bool = False,
 ) -> PixelOptions:
     """
     Parse command options from message string.
@@ -27,6 +28,7 @@ def parse_options(
         default_size: Default pixel size from config
         default_palette: Default palette name from config
         default_fx: Default FX string from config
+        random_fx: Whether to randomly select FX when not specified
 
     Returns:
         PixelOptions with parsed values
@@ -89,6 +91,9 @@ def parse_options(
     if fx_list is None or len(fx_list) == 0:
         if default_fx:
             fx_list = normalize_fx_names(default_fx.split(","))
+        elif random_fx:
+            all_fx = sorted(ALL_FX)
+            fx_list = random.sample(all_fx, k=random.randint(0, len(all_fx)))
         else:
             fx_list = []
 
