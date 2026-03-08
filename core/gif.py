@@ -13,7 +13,7 @@ def normalize_gif_frames(frames: list[Image.Image]) -> list[Image.Image]:
     """
     Ensure all frames have same size and mode.
 
-    - Convert to RGB if needed
+    - Convert RGBA to RGB with white background
     - Resize to first frame's size if inconsistent
 
     Args:
@@ -30,8 +30,15 @@ def normalize_gif_frames(frames: list[Image.Image]) -> list[Image.Image]:
     normalized = []
 
     for frame in frames:
-        # Convert to RGB
-        if frame.mode != "RGB":
+        # Convert RGBA to RGB with white background
+        if frame.mode == "RGBA":
+            # Create white background
+            white_bg = Image.new("RGB", frame.size, (255, 255, 255))
+            # Composite RGBA over white background
+            white_bg.paste(frame, mask=frame.split()[3])  # Use alpha channel as mask
+            frame = white_bg
+        elif frame.mode != "RGB":
+            # Convert other modes to RGB
             frame = frame.convert("RGB")
 
         # Resize if needed

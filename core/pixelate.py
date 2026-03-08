@@ -5,8 +5,6 @@ Provides the main pixelate() function and supporting utilities
 for downscaling, palette mapping, and upscaling.
 """
 
-from typing import cast
-
 import numpy as np
 from numpy.typing import NDArray
 from PIL import Image
@@ -87,6 +85,8 @@ def map_array_to_palette_rgb(
 def apply_floyd_steinberg_dither(
     rgb_array: np.ndarray,
     palette: np.ndarray,
+    *,
+    alpha_mask: np.ndarray | None = None,
 ) -> np.ndarray:
     """
     Floyd-Steinberg dithering on the pixel grid.
@@ -101,24 +101,32 @@ def apply_floyd_steinberg_dither(
     Args:
         rgb_array: Shape (H, W, 3), dtype uint8
         palette: Shape (K, 3), dtype uint8
+        alpha_mask: Optional shape (H, W) bool array.
+                    True = opaque (process normally),
+                    False = transparent (skip, no color mapping or error diffusion).
 
     Returns:
         Quantized array with only palette colors, dtype uint8
     """
-    # Work with float64 to avoid precision issues
-    work = rgb_array.astype(np.float64)
+    # Work with float32 (sufficient precision, better memory bandwidth)
+    work = rgb_array.astype(np.float32)
     height, width = work.shape[:2]
     result = np.zeros_like(work)
 
-    palette_float = palette.astype(np.float64)
+    palette_float = palette.astype(np.float32)
     palette_int = palette.astype(np.int32)
 
     for y in range(height):
         for x in range(width):
+            # Skip transparent pixels
+            if alpha_mask is not None and not alpha_mask[y, x]:
+                result[y, x] = work[y, x]
+                continue
+
             old_pixel = work[y, x].copy()
 
             # Find nearest palette color
-            diff = palette_int.astype(np.int32) - old_pixel.astype(np.int32)
+            diff = palette_int - old_pixel.astype(np.int32)
             distances = np.sum(diff**2, axis=1)
             nearest_idx = np.argmin(distances)
             new_pixel = palette_float[nearest_idx]
@@ -128,21 +136,25 @@ def apply_floyd_steinberg_dither(
             # Calculate quantization error
             error = old_pixel - new_pixel
 
-            # Diffuse error to neighbors
+            # Diffuse error to neighbors (only to opaque pixels)
             # Right: 7/16
             if x + 1 < width:
-                work[y, x + 1] += error * (7 / 16)
+                if alpha_mask is None or alpha_mask[y, x + 1]:
+                    work[y, x + 1] += error * (7 / 16)
 
             # Bottom row neighbors
             if y + 1 < height:
                 # Bottom-left: 3/16
                 if x - 1 >= 0:
-                    work[y + 1, x - 1] += error * (3 / 16)
+                    if alpha_mask is None or alpha_mask[y + 1, x - 1]:
+                        work[y + 1, x - 1] += error * (3 / 16)
                 # Bottom: 5/16
-                work[y + 1, x] += error * (5 / 16)
+                if alpha_mask is None or alpha_mask[y + 1, x]:
+                    work[y + 1, x] += error * (5 / 16)
                 # Bottom-right: 1/16
                 if x + 1 < width:
-                    work[y + 1, x + 1] += error * (1 / 16)
+                    if alpha_mask is None or alpha_mask[y + 1, x + 1]:
+                        work[y + 1, x + 1] += error * (1 / 16)
 
     # Clip and convert back to uint8
     return np.clip(result, 0, 255).astype(np.uint8)
@@ -157,28 +169,47 @@ def map_to_palette(
     """
     Map all pixels to nearest color in palette.
 
+    Supports both RGB and RGBA images. For RGBA images, pixels with
+    alpha < 30 are skipped (not mapped to palette).
+
     Args:
-        image: Input PIL image (should be RGB mode)
+        image: Input PIL image (RGB or RGBA mode)
         palette: Numpy array of shape (N, 3) with dtype uint8
         dither: If True, use Floyd-Steinberg dithering;
                 if False, use vectorized RGB Euclidean distance
 
     Returns:
-        PIL.Image in RGB mode with palette-mapped colors
+        PIL.Image with palette-mapped colors (same mode as input)
     """
     # Validate palette is not empty
     if len(palette) == 0:
         raise ValueError("Palette must not be empty")
 
-    # Convert to numpy array
-    rgb_array = np.array(image)
+    img_array = np.array(image)
+    has_alpha = image.mode == "RGBA" and img_array.shape[2] == 4
+
+    if has_alpha:
+        rgb_array = img_array[:, :, :3]
+        alpha_array = img_array[:, :, 3]
+        opaque_mask = alpha_array >= 30
+    else:
+        rgb_array = img_array
 
     if dither:
-        result_array = apply_floyd_steinberg_dither(rgb_array, palette)
+        result_rgb = apply_floyd_steinberg_dither(
+            rgb_array, palette,
+            alpha_mask=opaque_mask if has_alpha else None,
+        )
     else:
-        result_array = map_array_to_palette_rgb(rgb_array, palette)
+        result_rgb = map_array_to_palette_rgb(rgb_array, palette)
 
-    return Image.fromarray(result_array, mode="RGB")
+    if has_alpha:
+        # Restore original RGB for transparent pixels
+        result_rgb[~opaque_mask] = rgb_array[~opaque_mask]
+        result_array = np.dstack([result_rgb, alpha_array])
+        return Image.fromarray(result_array, mode="RGBA")
+    else:
+        return Image.fromarray(result_rgb, mode="RGB")
 
 
 def upscale_nearest(
@@ -209,20 +240,20 @@ def pixelate(
     Main pixelation pipeline: resize down -> palette map -> resize up.
 
     Args:
-        image: Input PIL image (any mode, will be converted to RGB)
+        image: Input PIL image (any mode, will be converted to RGBA)
         size: Pixel block size (2-5), used to calculate downscale factor
         palette: Palette name string or numpy array of shape (N, 3)
         dither: Enable Floyd-Steinberg dithering during palette mapping
 
     Returns:
-        Pixelated PIL.Image in RGB mode
+        Pixelated PIL.Image in RGBA mode
     """
     # Validate parameters
     if not (2 <= size <= 5):
         raise ValueError(f"Pixel size must be between 2 and 5, got {size}")
 
-    # Convert to RGB
-    image = image.convert("RGB")
+    # Convert to RGBA to preserve alpha channel
+    image = image.convert("RGBA")
 
     # Store original size for final upscaling
     original_size = image.size
@@ -233,13 +264,30 @@ def pixelate(
     else:
         palette_array = palette
 
-    # Step 1: Resize down
+    # Step 1: Resize down (RGBA)
     small = resize_for_pixelation(image, size)
 
-    # Step 2: Map to palette
-    mapped = map_to_palette(small, palette_array, dither=dither)
+    # Step 2: Split into RGB and Alpha
+    small_array = np.array(small)
+    rgb_array = small_array[:, :, :3]
+    alpha_array = small_array[:, :, 3]
 
-    # Step 3: Upscale back to original size
-    result = upscale_nearest(mapped, original_size)
+    # Step 3: Map to palette, skipping transparent pixels (alpha < 30)
+    opaque_mask = alpha_array >= 30
+
+    if dither:
+        mapped_rgb = apply_floyd_steinberg_dither(rgb_array, palette_array, alpha_mask=opaque_mask)
+    else:
+        mapped_rgb = map_array_to_palette_rgb(rgb_array, palette_array)
+
+    # Restore original RGB for transparent pixels (alpha < 30)
+    mapped_rgb[~opaque_mask] = rgb_array[~opaque_mask]
+
+    # Step 4: Recombine RGBA
+    result_array = np.dstack([mapped_rgb, alpha_array])
+    small_mapped = Image.fromarray(result_array, mode="RGBA")
+
+    # Step 5: Upscale back to original size
+    result = upscale_nearest(small_mapped, original_size)
 
     return result

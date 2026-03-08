@@ -2,11 +2,12 @@
 FX effects for pixel art post-processing.
 
 Provides 5 effects:
-- Static: glitch, crt, dither (re-applies palette with Floyd-Steinberg)
-- Animated: cycle (palette rotation), ghost (trail effect)
+- Static: crt (scanline overlay)
+- Animated: glitch (RGB shift animation), dither (shimmering texture),
+           cycle (palette rotation), ghost (trail effect)
 
-Note: The 'dither' effect re-applies palette mapping with Floyd-Steinberg dithering
-as a post-processing step on an already pixelated image.
+Note: The 'dither' animation applies subtle brightness perturbation per frame
+before Floyd-Steinberg dithering, creating a shimmering texture effect.
 """
 
 import random
@@ -21,8 +22,8 @@ from .pixelate import map_to_palette
 
 
 # FX categories
-STATIC_FX: Final[set[str]] = {"glitch", "crt", "dither"}
-ANIMATED_FX: Final[set[str]] = {"cycle", "ghost"}
+STATIC_FX: Final[set[str]] = {"crt"}
+ANIMATED_FX: Final[set[str]] = {"glitch", "dither", "cycle", "ghost"}
 ALL_FX: Final[set[str]] = STATIC_FX | ANIMATED_FX
 
 
@@ -48,45 +49,27 @@ def normalize_fx_names(fx_list: list[str]) -> list[str]:
     return normalized
 
 
-def is_animated_fx(fx_list: list[str]) -> bool:
-    """
-    Check if any FX in list produces animation.
-
-    Args:
-        fx_list: List of FX names
-
-    Returns:
-        True if any animated FX is present
-    """
-    for fx in fx_list:
-        if fx.lower().strip() in ANIMATED_FX:
-            return True
-    return False
-
-
-def random_fx() -> list[str]:
-    """
-    Pick one random FX effect.
-
-    Returns:
-        List containing single random FX name
-    """
-    return [random.choice(list(ALL_FX))]
-
-
 def apply_glitch(image: Image.Image, shift: int = 6, band_count: int = 8) -> Image.Image:
     """
     Glitch effect: RGB channel offset + random band displacement.
 
     Args:
-        image: Input PIL image (RGB mode)
+        image: Input PIL image (RGB or RGBA mode)
         shift: Channel shift amount in pixels
         band_count: Number of random bands to displace
 
     Returns:
-        Glitched PIL image
+        Glitched PIL image (same mode as input)
     """
-    arr = np.array(image)
+    # Preserve alpha if present
+    has_alpha = image.mode == "RGBA"
+    if has_alpha:
+        rgb_image = image.convert("RGB")
+        alpha_channel = image.split()[3]
+    else:
+        rgb_image = image
+
+    arr = np.array(rgb_image)
     height, width = arr.shape[:2]
 
     # Split and shift channels
@@ -115,7 +98,47 @@ def apply_glitch(image: Image.Image, shift: int = 6, band_count: int = 8) -> Ima
         band = result[y_start : y_start + band_height, :, :].copy()
         result[y_start : y_start + band_height, :, :] = np.roll(band, shift=x_offset, axis=1)
 
-    return Image.fromarray(result, mode="RGB")
+    glitched_rgb = Image.fromarray(result, mode="RGB")
+
+    if has_alpha:
+        glitched_rgb.putalpha(alpha_channel)
+        return glitched_rgb
+    else:
+        return glitched_rgb
+
+
+def apply_glitch_frames(
+    image: Image.Image,
+    frames: int = 8,
+    max_shift: int = 6,
+    base_band_count: int = 8,
+) -> list[Image.Image]:
+    """
+    Generate glitch animation frames with varying shift and band displacement.
+
+    Args:
+        image: Input PIL image
+        frames: Number of frames to generate (minimum 2 for GIF)
+        max_shift: Maximum RGB channel shift
+        base_band_count: Base number of displacement bands
+
+    Returns:
+        List of glitched frames
+    """
+    result_frames = []
+
+    frame_count = max(frames, 2)  # Ensure at least 2 frames
+    for i in range(frame_count):
+        # Vary shift and band_count per frame for animation effect
+        phase = i / frame_count
+        shift = max(1, int(round(1 + (max_shift - 1) * abs(np.sin(phase * np.pi)))))
+        band_count = max(2, base_band_count + (i % 3) - 1)
+
+        # Generate single glitch frame
+        frame = apply_glitch(image, shift=shift, band_count=band_count)
+        result_frames.append(frame)
+
+    return result_frames
 
 
 def apply_crt(image: Image.Image, scanline_alpha: int = 48) -> Image.Image:
@@ -123,7 +146,7 @@ def apply_crt(image: Image.Image, scanline_alpha: int = 48) -> Image.Image:
     CRT scanline effect: overlay semi-transparent black lines.
 
     Args:
-        image: Input PIL image (RGB mode)
+        image: Input PIL image (RGB or RGBA mode)
         scanline_alpha: Alpha value (0-255) for scanline darkness
 
     Returns:
@@ -149,25 +172,86 @@ def apply_crt(image: Image.Image, scanline_alpha: int = 48) -> Image.Image:
     # Keep original alpha channel
     result = np.concatenate([result_rgb, arr[:, :, 3:4]], axis=2)
 
-    return Image.fromarray(result, mode="RGBA").convert("RGB")
+    return Image.fromarray(result, mode="RGBA")
 
 
-def apply_dither(image: Image.Image, palette_name: str) -> Image.Image:
+def apply_dither_frames(
+    image: Image.Image,
+    palette_name: str,
+    *,
+    pixel_size: int = 1,
+    frames: int = 8,
+    noise_strength: float = 2.0,
+) -> list[Image.Image]:
     """
-    Dither effect: Re-apply palette mapping with Floyd-Steinberg dithering.
+    Generate dither animation frames with subtle noise variation.
 
-    This is a post-processing effect that re-maps an already pixelated image
-    to the palette using Floyd-Steinberg dithering for a grainier, retro look.
+    When pixel_size > 1, downscale before dithering and upscale after
+    for much better performance on large images.
+
+    Each frame applies slight brightness perturbation before dithering,
+    creating a subtle shimmer effect in the dithered texture.
 
     Args:
-        image: Input PIL image (RGB mode, should be pixelated)
+        image: Input PIL image
         palette_name: Name of palette to use for dithering
+        pixel_size: Size of pixel blocks (downscale before dither for performance)
+        frames: Number of frames to generate (minimum 2 for GIF)
+        noise_strength: Strength of per-frame noise (0-10, default 2.0)
 
     Returns:
-        Dithered PIL image
+        List of dithered frames
     """
+    # Defensive: ensure pixel_size is at least 1
+    pixel_size = max(pixel_size, 1)
+
+    result_frames = []
+    frame_count = max(frames, 2)
+
+    # Move get_palette outside loop (was called every frame)
     palette = get_palette(palette_name)
-    return map_to_palette(image, palette, dither=True)
+
+    # Save original size for final upscaling
+    original_size = image.size
+
+    # If pixel_size > 1, downscale to pixel grid size first
+    if pixel_size > 1:
+        grid_w = max(1, image.size[0] // pixel_size)
+        grid_h = max(1, image.size[1] // pixel_size)
+        work_image = image.resize((grid_w, grid_h), Image.Resampling.BILINEAR)
+    else:
+        work_image = image
+
+    # Convert to array once, outside loop (avoid repeated np.array calls)
+    base_arr = np.array(work_image)
+    is_rgba = work_image.mode == "RGBA"
+
+    for i in range(frame_count):
+        phase = i / frame_count
+        noise_offset = int(noise_strength * np.sin(phase * 2 * np.pi))
+
+        # Apply perturbation based on base_arr
+        if is_rgba:
+            rgb = base_arr[:, :, :3].astype(np.int16)
+            alpha = base_arr[:, :, 3:]
+            rgb = np.clip(rgb + noise_offset, 0, 255).astype(np.uint8)
+            perturbed_arr = np.concatenate([rgb, alpha], axis=2)
+            perturbed = Image.fromarray(perturbed_arr, mode="RGBA")
+        else:
+            arr = base_arr.astype(np.int16)
+            arr = np.clip(arr + noise_offset, 0, 255).astype(np.uint8)
+            perturbed = Image.fromarray(arr, mode=work_image.mode)
+
+        # Use pre-fetched palette
+        frame = map_to_palette(perturbed, palette, dither=True)
+
+        # If downscaled, upscale back to original size
+        if pixel_size > 1:
+            frame = frame.resize(original_size, Image.Resampling.NEAREST)
+
+        result_frames.append(frame)
+
+    return result_frames
 
 
 def _build_palette_index_map(
@@ -186,9 +270,9 @@ def _build_palette_index_map(
     """
     arr = np.array(image)
 
-    # Flatten to (H*W, 3)
+    # Flatten to (H*W, 3) - only take RGB channels for RGBA support
     height, width = arr.shape[:2]
-    pixels = arr.reshape(-1, 3)
+    pixels = arr[:, :, :3].reshape(-1, 3)
 
     # Convert to int32 for distance calculation
     pixels_int = pixels.astype(np.int32)
@@ -212,7 +296,7 @@ def apply_cycle(
     Palette cycle animation: rotate palette colors and remap.
 
     Args:
-        image: Input PIL image (RGB mode, pixelated and palette-mapped)
+        image: Input PIL image (RGB or RGBA mode, pixelated and palette-mapped)
         palette_name: Name of the palette used
         frames: Number of animation frames
 
@@ -221,8 +305,20 @@ def apply_cycle(
     """
     palette = get_palette(palette_name)
 
+    # Preserve alpha if present
+    has_alpha = image.mode == "RGBA"
+    if has_alpha:
+        img_array = np.array(image)
+        rgb_array = img_array[:, :, :3]
+        alpha_array = img_array[:, :, 3]
+        opaque_mask = alpha_array >= 30
+        rgb_image = Image.fromarray(rgb_array, mode="RGB")
+    else:
+        rgb_image = image
+        opaque_mask = None
+
     # Build index map: which palette index each pixel uses
-    index_map = _build_palette_index_map(image, palette)
+    index_map = _build_palette_index_map(rgb_image, palette)
     height, width = index_map.shape
 
     result_frames = []
@@ -232,8 +328,17 @@ def apply_cycle(
         shifted_palette = np.roll(palette, shift=i, axis=0)
 
         # Remap using shifted palette
-        frame_arr = shifted_palette[index_map]
-        frame = Image.fromarray(frame_arr, mode="RGB")
+        frame_rgb = shifted_palette[index_map]
+
+        if has_alpha:
+            # Restore original RGB for transparent pixels (alpha < 30)
+            frame_rgb[~opaque_mask] = rgb_array[~opaque_mask]
+            # Recombine with alpha
+            frame_arr = np.dstack([frame_rgb, alpha_array])
+            frame = Image.fromarray(frame_arr, mode="RGBA")
+        else:
+            frame = Image.fromarray(frame_rgb, mode="RGB")
+
         result_frames.append(frame)
 
     return result_frames
@@ -249,7 +354,7 @@ def apply_ghost(
     Ghost trail effect: multiple frames with decaying transparency offset.
 
     Args:
-        image: Input PIL image (RGB mode)
+        image: Input PIL image (RGB or RGBA mode)
         frames: Number of animation frames
         alpha_decay: Multiplicative decay per ghost layer
         offset_step: (x, y) offset increment per frame
@@ -303,7 +408,7 @@ def apply_ghost(
             [final_rgb.astype(np.uint8), final_alpha.astype(np.uint8)],
             axis=2,
         )
-        frame = Image.fromarray(final_arr, mode="RGBA").convert("RGB")
+        frame = Image.fromarray(final_arr, mode="RGBA")
         result_frames.append(frame)
 
     return result_frames
@@ -314,6 +419,7 @@ def apply_fx(
     fx_list: list[str],
     *,
     palette_name: str | None = None,
+    pixel_size: int = 1,
     cycle_frames: int = 8,
     ghost_frames: int = 6,
     gif_duration: int = 100,
@@ -323,19 +429,23 @@ def apply_fx(
 
     Strategy:
     1. Separate fx_list into static and animated
-    2. Apply all static FX first (in order: dither -> glitch -> crt)
+    2. Apply all static FX first (only crt)
     3. If animated FX exist, generate frames from appropriate source
-    4. If both cycle and ghost, only use first animated FX found
+       - glitch: uses static-FX-processed image, generates varying RGB shifts
+       - dither: uses static-FX-processed image, generates shimmering dither texture
+       - cycle: uses pre-static-FX image to avoid color drift
+       - ghost: uses static-FX-processed image
+    4. If multiple animated FX, only use first one found
 
-    Note: cycle animation uses the original pre-static-FX image to avoid
-    color drift from glitch/crt effects. ghost uses the static-FX-processed image.
+    Note: All animated FX use gif_frames config (passed as cycle_frames/ghost_frames).
 
     Args:
-        image: Input PIL image (RGB mode, pixelated)
+        image: Input PIL image (RGB or RGBA mode, pixelated)
         fx_list: List of FX names to apply
         palette_name: Required for dither and cycle effects
-        cycle_frames: Number of frames for cycle animation
-        ghost_frames: Number of frames for ghost animation
+        pixel_size: Pixel block size (passed to dither for downscaling optimization)
+        cycle_frames: Number of frames for animated FX (glitch, dither, cycle, ghost)
+        ghost_frames: Number of frames for ghost animation (unused, for API consistency)
         gif_duration: Per-frame duration in ms (unused here, for API consistency)
 
     Returns:
@@ -355,24 +465,33 @@ def apply_fx(
     # Save pre-static-fx image for cycle (needs clean palette-mapped input)
     pre_static_image = image.copy()
 
-    # Apply static FX in defined order: dither -> glitch -> crt
-    static_order = ["dither", "glitch", "crt"]
+    # Apply static FX (only crt)
     current_image = image.copy()
 
-    for fx_name in static_order:
-        if fx_name in static_fx:
-            if fx_name == "dither":
-                if palette_name is None:
-                    continue  # Skip dither without palette
-                current_image = apply_dither(current_image, palette_name)
-            elif fx_name == "glitch":
-                current_image = apply_glitch(current_image)
-            elif fx_name == "crt":
-                current_image = apply_crt(current_image)
+    for fx_name in static_fx:
+        if fx_name == "crt":
+            current_image = apply_crt(current_image)
 
     # Handle animated FX (only first one if multiple)
     if animated_fx:
         animated_name = animated_fx[0]
+
+        if animated_name == "glitch":
+            # Glitch animation uses gif_frames config (same as other animated FX)
+            frames = apply_glitch_frames(current_image, frames=cycle_frames)
+            return True, frames
+
+        if animated_name == "dither":
+            if palette_name is None:
+                # Cannot dither without palette, return static result
+                return False, [current_image]
+            # Dither animation uses gif_frames config (same as other animated FX)
+            frames = apply_dither_frames(
+                current_image, palette_name,
+                pixel_size=pixel_size,
+                frames=cycle_frames,
+            )
+            return True, frames
 
         if animated_name == "cycle":
             if palette_name is None:

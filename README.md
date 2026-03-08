@@ -61,15 +61,15 @@ git clone https://github.com/MR-MonkeyRay/astrbot_plugin_pixel_converter.git
 ## FX 特效
 
 **静态（PNG）**：
-- `glitch` - 故障风位移
 - `crt` - CRT 扫描线
-- `dither` - 抖动处理
 
 **动画（GIF）**：
+- `glitch` - 故障风动画
+- `dither` - 动态抖动纹理动画
 - `cycle` - 调色板轮转动画
 - `ghost` - 残影动画
 
-多个特效用逗号分隔，如 `glitch,crt`。多个动画 FX 同时指定时，仅第一个生效。
+多个特效用逗号分隔，如 `crt`。多个动画 FX 同时指定时，仅第一个生效。
 
 ## 配置项
 
@@ -87,14 +87,15 @@ git clone https://github.com/MR-MonkeyRay/astrbot_plugin_pixel_converter.git
 ```
 像素画                     # 自己头像，随机调色板
 像素画 gameboy             # 自己头像，Game Boy 调色板
-像素画 3 nes glitch        # SIZE=3, NES 调色板, 故障特效
-像素画 cyber cycle @某人   # 某人头像，赛博调色板，轮转GIF
-pixel 4 mono crt,dither   # SIZE=4, 黑白, CRT+抖动
+像素画 3 nes crt           # SIZE=3, NES 调色板, CRT特效
+像素画 cyber glitch @某人  # 某人头像，赛博调色板，故障GIF
+像素画 pico8 dither        # PICO-8调色板，抖动GIF
+像素画 mono cycle          # 黑白调色板，轮转GIF
 px sakura                  # 樱花调色板
 ```
 
 配合图片使用：
 ```
-[图片] 像素画 pico8 glitch
+[图片] 像素画 pico8 glitch  # 输出故障风GIF动画
 像素画 nes @某人
 ```

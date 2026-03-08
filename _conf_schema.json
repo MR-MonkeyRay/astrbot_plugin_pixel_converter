@@ -1,7 +1,7 @@
 {
   "default_size": {
     "type": "int",
-    "default": 3,
+    "default": "",
     "description": "默认像素大小(2-5)，留空则随机"
   },
   "default_palette": {
