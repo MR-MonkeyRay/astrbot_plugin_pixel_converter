@@ -24,17 +24,16 @@ from .core.sources import (
 from .core.renderer import process_image, cleanup_file
 
 
-@register("astrbot_plugin_pixel_converter", "monkeyray", "将图片转换为像素风格", "0.1.4")
+@register("astrbot_plugin_pixel_converter", "monkeyray", "将图片转换为像素风格", "0.1.5")
 class PixelConverterPlugin(Star):
     """AstrBot plugin for converting images to pixel art style."""
 
     def __init__(self, context: Context) -> None:
         super().__init__(context)
         # Config defaults
-        self.default_size: int = 3
+        self.default_size: int = 0
         self.default_palette: str = ""
         self.default_fx: str = ""
-        self.random_fx: bool = False
         self.max_image_size: int = 2048
         self.gif_frames: int = 8
         self.gif_duration: int = 100
@@ -45,10 +44,9 @@ class PixelConverterPlugin(Star):
     async def initialize(self) -> None:
         """Load plugin configuration."""
         config = self.context.get_config()
-        self.default_size = config.get("default_size", 3)
+        self.default_size = config.get("default_size", 0)
         self.default_palette = config.get("default_palette", "")
         self.default_fx = config.get("default_fx", "")
-        self.random_fx = config.get("random_fx", False)
         self.max_image_size = config.get("max_image_size", 2048)
         self.gif_frames = config.get("gif_frames", 8)
         self.gif_duration = config.get("gif_duration", 100)
@@ -99,7 +97,6 @@ class PixelConverterPlugin(Star):
                 default_size=self.default_size,
                 default_palette=self.default_palette,
                 default_fx=self.default_fx,
-                random_fx=self.random_fx,
             )
 
             # Check for help request

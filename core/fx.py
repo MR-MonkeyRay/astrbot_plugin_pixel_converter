@@ -434,27 +434,25 @@ def apply_fx(
     gif_duration: int = 100,
 ) -> tuple[bool, list[Image.Image]]:
     """
-    Apply FX effects to a pixelated image.
+    Apply FX effects to a pixelated image using unified frame pipeline.
 
-    Strategy:
-    1. Separate fx_list into static and animated
-    2. Apply all static FX first (only crt)
-    3. If animated FX exist, generate frames from appropriate source
-       - glitch: uses static-FX-processed image, generates varying RGB shifts
-       - dither: uses static-FX-processed image, generates shimmering dither texture
-       - cycle: uses pre-static-FX image to avoid color drift
-       - ghost: uses static-FX-processed image
-    4. If multiple animated FX, only use first one found
+    Pipeline order: cycle? → dither? → glitch? → crt? (ghost as standalone source)
 
-    Note: All animated FX use gif_frames config (passed as cycle_frames/ghost_frames).
+    Core rules:
+    1. cycle is mutually exclusive with other animated FX (dither/glitch/ghost)
+       - If cycle coexists with other animated FX, only cycle is applied
+    2. Non-cycle animated FX can chain: dither → glitch
+       - ghost only works as standalone animation source (not chained)
+    3. CRT is always applied as final per-frame post-processing
+    4. All animated FX share cycle_frames as the frame count
 
     Args:
         image: Input PIL image (RGB or RGBA mode, pixelated)
         fx_list: List of FX names to apply
         palette_name: Required for dither and cycle effects
         pixel_size: Pixel block size (passed to dither for downscaling optimization)
-        cycle_frames: Number of frames for animated FX (glitch, dither, cycle, ghost)
-        ghost_frames: Number of frames for ghost animation (unused, for API consistency)
+        cycle_frames: Number of frames for animated FX (glitch, dither, cycle)
+        ghost_frames: Number of frames for ghost animation
         gif_duration: Per-frame duration in ms (unused here, for API consistency)
 
     Returns:
@@ -467,53 +465,62 @@ def apply_fx(
         # No valid FX, return original
         return False, [image.copy()]
 
-    # Separate static and animated FX
-    static_fx = [fx for fx in valid_fx if fx in STATIC_FX]
-    animated_fx = [fx for fx in valid_fx if fx in ANIMATED_FX]
+    # Determine which FX are present
+    has_crt = "crt" in valid_fx
+    has_cycle = "cycle" in valid_fx
+    has_dither = "dither" in valid_fx
+    has_glitch = "glitch" in valid_fx
+    has_ghost = "ghost" in valid_fx
 
-    # Save pre-static-fx image for cycle (needs clean palette-mapped input)
-    pre_static_image = image.copy()
+    is_animated = False
+    frames: list[Image.Image] = []
 
-    # Apply static FX (only crt)
-    current_image = image.copy()
+    # Step 1: Animation source selection
+    if has_cycle and palette_name is not None:
+        # Cycle mutex mode: ignore other animated FX
+        frames = apply_cycle(image, palette_name, frames=cycle_frames)
+        is_animated = True
+    else:
+        # Non-cycle pipeline: dither → glitch → ghost
+        frames = [image.copy()]
 
-    for fx_name in static_fx:
-        if fx_name == "crt":
-            current_image = apply_crt(current_image)
+        # Dither as animation source
+        if has_dither:
+            if palette_name is not None:
+                frames = apply_dither_frames(
+                    frames[0],
+                    palette_name,
+                    pixel_size=pixel_size,
+                    frames=cycle_frames,
+                )
+                is_animated = True
 
-    # Handle animated FX (only first one if multiple)
-    if animated_fx:
-        animated_name = animated_fx[0]
+        # Glitch: per-frame transformation
+        if has_glitch:
+            if is_animated:
+                # Apply glitch to each existing frame with varying parameters
+                frame_count = len(frames)
+                new_frames = []
+                for i, frame in enumerate(frames):
+                    phase = i / frame_count
+                    shift = max(1, int(round(1 + 5 * abs(np.sin(phase * np.pi)))))
+                    band_count = max(2, 8 + (i % 3) - 1)
+                    new_frames.append(apply_glitch(frame, shift=shift, band_count=band_count))
+                frames = new_frames
+            else:
+                # Glitch as animation source
+                frames = apply_glitch_frames(frames[0], frames=cycle_frames)
+                is_animated = True
 
-        if animated_name == "glitch":
-            # Glitch animation uses gif_frames config (same as other animated FX)
-            frames = apply_glitch_frames(current_image, frames=cycle_frames)
-            return True, frames
+        # Ghost: only as standalone animation source
+        # (ghost's trail effect generates N frames from 1 base image,
+        #  per-frame ghost overlay on existing animation is not implemented)
+        if has_ghost and not is_animated:
+            frames = apply_ghost(frames[0], frames=ghost_frames)
+            is_animated = True
 
-        if animated_name == "dither":
-            if palette_name is None:
-                # Cannot dither without palette, return static result
-                return False, [current_image]
-            # Dither animation uses gif_frames config (same as other animated FX)
-            frames = apply_dither_frames(
-                current_image, palette_name,
-                pixel_size=pixel_size,
-                frames=cycle_frames,
-            )
-            return True, frames
+    # Step 2: CRT as final per-frame post-processing
+    if has_crt:
+        frames = [apply_crt(frame) for frame in frames]
 
-        if animated_name == "cycle":
-            if palette_name is None:
-                # Cannot cycle without palette, return static result
-                return False, [current_image]
-            # Use pre-static image for cycle to avoid color drift
-            frames = apply_cycle(pre_static_image, palette_name, frames=cycle_frames)
-            return True, frames
-
-        elif animated_name == "ghost":
-            # Ghost uses the static-fx-processed image
-            frames = apply_ghost(current_image, frames=ghost_frames)
-            return True, frames
-
-    # No animated FX, return static result
-    return False, [current_image]
+    return is_animated, frames

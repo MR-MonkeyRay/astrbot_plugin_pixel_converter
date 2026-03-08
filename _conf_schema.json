@@ -1,8 +1,8 @@
 {
   "default_size": {
     "type": "int",
-    "default": "",
-    "description": "像素大小，范围2-5"
+    "default": 0,
+    "description": "像素大小，范围2-5，填0则随机"
   },
   "default_palette": {
     "type": "string",
@@ -12,12 +12,7 @@
   "default_fx": {
     "type": "string",
     "default": "",
-    "description": "默认FX，多个逗号分隔"
-  },
-  "random_fx": {
-    "type": "bool",
-    "default": true,
-    "description": "开启FX随机"
+    "description": "默认FX，多个逗号分隔。填\"none\"禁用随机，留空则随机"
   },
   "max_image_size": {
     "type": "int",

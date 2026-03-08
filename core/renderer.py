@@ -77,6 +77,8 @@ def render_sync(
     # Pixelate
     pixelated = pixelate(image, size, palette, dither=False)
 
+    logger.debug(f"FX list: {fx_list}, palette: {palette}, size: {size}")
+
     # Apply FX effects
     is_animated, frames = apply_fx(
         pixelated,
